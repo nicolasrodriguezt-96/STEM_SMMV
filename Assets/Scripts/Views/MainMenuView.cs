@@ -1,221 +1,625 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class MainMenuView : MonoBehaviour
 {
     [Header("Panels")]
     [SerializeField]
-    private GameObject packagesPanel;
+    private GameObject mainPanel;
 
     [SerializeField]
-    private GameObject quizzesPanel;
+    private GameObject testsPanel;
+
+    [SerializeField]
+    private GameObject storiesPanel;
+
+    [SerializeField]
+    private GameObject storyPanel;
+
+    [SerializeField]
+    private GameObject quizPanel;
 
     [Header("Containers")]
     [SerializeField]
-    private Transform packagesContainer;
+    private Transform testsContainer;
 
     [SerializeField]
-    private Transform quizzesContainer;
+    private Transform storiesContainer;
 
-    [Header("Prefabs")]
+    [Header("Prefab")]
     [SerializeField]
-    private GameObject menuButtonPrefab;
+    private GameObject contentCardPrefab;
 
-    [Header("Texts")]
+    [Header("Controllers")]
     [SerializeField]
-    private TMP_Text quizzesTitle;
+    private StoryController storyController;
+
+    [SerializeField]
+    private SequenceController sequenceController;
 
     private PackageLoaderService packageLoader;
+    private ImageLoaderService imageLoader;
 
-    private List<LoadedPackageModel> loadedPackages;
+    private List<LoadedPackageModel> loadedPackages =
+        new List<LoadedPackageModel>();
 
     private void Start()
     {
-        packageLoader = new PackageLoaderService();
+        packageLoader =
+            new PackageLoaderService();
 
-        ShowPackages();
+        imageLoader =
+            new ImageLoaderService();
+
+        LoadPackages();
+
+        ShowMainMenu();
     }
 
-    public void ShowPackages()
+    /*
+     * Carga todos los paquetes STEM
+     * instalados en persistentDataPath.
+     */
+    private void LoadPackages()
     {
-        packagesPanel.SetActive(true);
-        quizzesPanel.SetActive(false);
-
-        ClearContainer(packagesContainer);
-
         loadedPackages =
             packageLoader.LoadAllPackages();
 
-        if (loadedPackages.Count == 0)
+        Debug.Log(
+            $"Paquetes cargados para el menú: {loadedPackages.Count}"
+        );
+    }
+
+    /*
+     * PANTALLA PRINCIPAL
+     *
+     * Test Vocacional
+     * Historias
+     * Minijuegos
+     */
+    public void ShowMainMenu()
+    {
+        HideAllPanels();
+
+        if (mainPanel != null)
         {
-            CreateMessageButton(
-                packagesContainer,
-                "No hay paquetes instalados"
+            mainPanel.SetActive(true);
+        }
+    }
+
+    /*
+     * Muestra todos los tests vocacionales
+     * encontrados en todos los paquetes.
+     */
+    public void ShowTests()
+    {
+        HideAllPanels();
+
+        if (testsPanel != null)
+        {
+            testsPanel.SetActive(true);
+        }
+
+        ClearContainer(
+            testsContainer
+        );
+
+        int totalTests = 0;
+
+        foreach (
+            LoadedPackageModel package
+            in loadedPackages)
+        {
+            if (package == null)
+            {
+                continue;
+            }
+
+            if (package.cuestionarios == null)
+            {
+                continue;
+            }
+
+            foreach (
+                QuizModel quiz
+                in package.cuestionarios)
+            {
+                if (quiz == null)
+                {
+                    continue;
+                }
+
+                CreateQuizCard(
+                    package,
+                    quiz
+                );
+
+                totalTests++;
+            }
+        }
+
+        Debug.Log(
+            $"Tests vocacionales disponibles: {totalTests}"
+        );
+    }
+
+    /*
+     * Muestra todas las historias
+     * disponibles en los paquetes.
+     */
+    public void ShowStories()
+    {
+        HideAllPanels();
+
+        if (storiesPanel != null)
+        {
+            storiesPanel.SetActive(true);
+        }
+
+        ClearContainer(
+            storiesContainer
+        );
+
+        int totalStories = 0;
+
+        foreach (
+            LoadedPackageModel package
+            in loadedPackages)
+        {
+            if (package == null)
+            {
+                continue;
+            }
+
+            if (package.historias == null)
+            {
+                continue;
+            }
+
+            foreach (
+                StoryModel story
+                in package.historias)
+            {
+                if (story == null)
+                {
+                    continue;
+                }
+
+                CreateStoryCard(
+                    package,
+                    story
+                );
+
+                totalStories++;
+            }
+        }
+
+        Debug.Log(
+            $"Historias disponibles: {totalStories}"
+        );
+    }
+
+    /*
+     * Oculta absolutamente todos los paneles.
+     *
+     * Esto evita que QuizPanel o StoryPanel
+     * queden visibles accidentalmente.
+     */
+    public void HideAllPanels()
+    {
+        if (mainPanel != null)
+        {
+            mainPanel.SetActive(false);
+        }
+
+        if (testsPanel != null)
+        {
+            testsPanel.SetActive(false);
+        }
+
+        if (storiesPanel != null)
+        {
+            storiesPanel.SetActive(false);
+        }
+
+        if (storyPanel != null)
+        {
+            storyPanel.SetActive(false);
+        }
+
+        if (quizPanel != null)
+        {
+            quizPanel.SetActive(false);
+        }
+    }
+
+    /*
+     * Crea una tarjeta visual
+     * para un Test Vocacional.
+     */
+    private void CreateQuizCard(
+        LoadedPackageModel package,
+        QuizModel quiz)
+    {
+        if (contentCardPrefab == null)
+        {
+            Debug.LogError(
+                "No se asignó ContentCardPrefab en MainMenuView."
             );
 
             return;
         }
 
-        foreach (LoadedPackageModel package
-                 in loadedPackages)
+        if (testsContainer == null)
         {
-            CreatePackageButton(package);
+            Debug.LogError(
+                "No se asignó TestsContainer en MainMenuView."
+            );
+
+            return;
+        }
+
+        GameObject cardObject =
+            Instantiate(
+                contentCardPrefab,
+                testsContainer
+            );
+
+        ContentCardView card =
+            cardObject
+                .GetComponent<ContentCardView>();
+
+        if (card == null)
+        {
+            Debug.LogError(
+                "El prefab ContentCard no tiene ContentCardView."
+            );
+
+            Destroy(
+                cardObject
+            );
+
+            return;
+        }
+
+        /*
+         * Nombre del test.
+         */
+        if (card.TitleText != null)
+        {
+            card.TitleText.text =
+                quiz.nombre;
+        }
+
+        /*
+         * Imagen de portada del quiz.
+         */
+        Sprite sprite = null;
+
+        if (!string.IsNullOrWhiteSpace(
+                quiz.imagen))
+        {
+            sprite =
+                imageLoader.LoadSprite(
+                    package.rootPath,
+                    quiz.imagen
+                );
+        }
+
+        card.SetImage(
+            sprite
+        );
+
+        /*
+         * Click de la tarjeta.
+         */
+        if (card.Button != null)
+        {
+            card.Button
+                .onClick
+                .AddListener(
+                    () =>
+                        OpenQuiz(
+                            package,
+                            quiz
+                        )
+                );
         }
     }
 
-    private void CreatePackageButton(
-        LoadedPackageModel package)
+    /*
+     * Crea una tarjeta visual
+     * para una historia.
+     */
+    private void CreateStoryCard(
+        LoadedPackageModel package,
+        StoryModel story)
     {
-        GameObject buttonObject =
-            Instantiate(
-                menuButtonPrefab,
-                packagesContainer
+        if (contentCardPrefab == null)
+        {
+            Debug.LogError(
+                "No se asignó ContentCardPrefab en MainMenuView."
             );
 
-        Button button =
-            buttonObject.GetComponent<Button>();
+            return;
+        }
 
-        TMP_Text text =
-            buttonObject.GetComponentInChildren<TMP_Text>();
+        if (storiesContainer == null)
+        {
+            Debug.LogError(
+                "No se asignó StoriesContainer en MainMenuView."
+            );
 
-        text.text =
-            package.manifest.nombre;
+            return;
+        }
 
-        button.onClick.AddListener(
-            () => SelectPackage(package)
+        GameObject cardObject =
+            Instantiate(
+                contentCardPrefab,
+                storiesContainer
+            );
+
+        ContentCardView card =
+            cardObject
+                .GetComponent<ContentCardView>();
+
+        if (card == null)
+        {
+            Debug.LogError(
+                "El prefab ContentCard no tiene ContentCardView."
+            );
+
+            Destroy(
+                cardObject
+            );
+
+            return;
+        }
+
+        /*
+         * Nombre de la historia.
+         */
+        if (card.TitleText != null)
+        {
+            card.TitleText.text =
+                story.nombre;
+        }
+
+        /*
+         * Tomamos la primera imagen
+         * disponible entre las escenas.
+         */
+        string imagePath =
+            GetFirstStoryImage(
+                story
+            );
+
+        Sprite sprite = null;
+
+        if (!string.IsNullOrWhiteSpace(
+                imagePath))
+        {
+            sprite =
+                imageLoader.LoadSprite(
+                    package.rootPath,
+                    imagePath
+                );
+        }
+
+        card.SetImage(
+            sprite
         );
+
+        /*
+         * Click de la tarjeta.
+         */
+        if (card.Button != null)
+        {
+            card.Button
+                .onClick
+                .AddListener(
+                    () =>
+                        OpenStory(
+                            package,
+                            story
+                        )
+                );
+        }
     }
 
-    private void SelectPackage(
-        LoadedPackageModel package)
+    /*
+     * Busca la primera imagen disponible
+     * dentro de las escenas de una historia.
+     */
+    private string GetFirstStoryImage(
+        StoryModel story)
     {
-        AppController.Instance.SelectPackage(
+        if (story == null)
+        {
+            return null;
+        }
+
+        if (story.escenas == null)
+        {
+            return null;
+        }
+
+        if (story.escenas.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (
+            StorySceneModel scene
+            in story.escenas)
+        {
+            if (scene == null)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(
+                    scene.imagen))
+            {
+                return scene.imagen;
+            }
+        }
+
+        return null;
+    }
+
+    /*
+     * Abre una historia directamente
+     * desde el menú de historias.
+     */
+
+private void OpenStory(
+    LoadedPackageModel package,
+    StoryModel story)
+{
+    if (AppController.Instance == null)
+    {
+        Debug.LogError(
+            "No existe un AppController activo."
+        );
+
+        return;
+    }
+
+    if (storyController == null)
+    {
+        Debug.LogError(
+            "StoryController no está asignado."
+        );
+
+        return;
+    }
+
+    AppController.Instance
+        .SelectPackage(
             package
         );
 
-        ShowQuizzes(package);
-    }
+    Debug.Log(
+        $"Abriendo historia independiente: {story.nombre}"
+    );
 
-    private void ShowQuizzes(
-        LoadedPackageModel package)
+    storyController
+        .OpenStandaloneStory(
+            package,
+            story
+        );
+}
+
+    /*
+     * Inicia un Test Vocacional.
+     */
+    private void OpenQuiz(
+        LoadedPackageModel package,
+        QuizModel quiz)
     {
-        packagesPanel.SetActive(false);
-        quizzesPanel.SetActive(true);
-
-        ClearContainer(quizzesContainer);
-
-        if (quizzesTitle != null)
+        if (AppController.Instance == null)
         {
-            quizzesTitle.text =
-                package.manifest.nombre;
-        }
-
-        if (package.cuestionarios == null ||
-            package.cuestionarios.Count == 0)
-        {
-            CreateMessageButton(
-                quizzesContainer,
-                "Este paquete no contiene cuestionarios"
+            Debug.LogError(
+                "No existe un AppController activo."
             );
 
             return;
         }
 
-        foreach (QuizModel quiz
-                 in package.cuestionarios)
+        if (sequenceController == null)
         {
-            CreateQuizButton(quiz);
-        }
-    }
-
-    private void CreateQuizButton(
-        QuizModel quiz)
-    {
-        GameObject buttonObject =
-            Instantiate(
-                menuButtonPrefab,
-                quizzesContainer
+            Debug.LogError(
+                "SequenceController no está asignado en MainMenuView."
             );
 
-        Button button =
-            buttonObject.GetComponent<Button>();
+            return;
+        }
 
-        TMP_Text text =
-            buttonObject.GetComponentInChildren<TMP_Text>();
+        /*
+         * Guardamos el paquete actual.
+         */
+        AppController.Instance
+            .SelectPackage(
+                package
+            );
 
-        text.text = quiz.nombre;
-
-        button.onClick.AddListener(
-            () => SelectQuiz(quiz)
-        );
-    }
-
-    private void SelectQuiz(
-        QuizModel quiz)
-    {
-        AppController.Instance.StartQuiz(
-            quiz
-        );
+        /*
+         * Inicializamos:
+         *
+         * CurrentQuiz
+         * Score = 0
+         * CurrentSequenceIndex = 0
+         * QuizStartTime
+         */
+        AppController.Instance
+            .StartQuiz(
+                quiz
+            );
 
         Debug.Log(
-            $"Quiz seleccionado: {quiz.nombre}"
+            $"Iniciando Test Vocacional: {quiz.nombre}"
         );
 
-        SequenceItemModel firstItem =
-            AppController.Instance
-                .GetCurrentSequenceItem();
-
-        if (firstItem != null)
-        {
-            Debug.Log(
-                $"Primer elemento: " +
-                $"{firstItem.tipo} - " +
-                $"{firstItem.id}"
-            );
-        }
+        /*
+         * IMPORTANTE:
+         *
+         * NO abrimos QuizPanel directamente.
+         *
+         * La secuencia del JSON decide qué debe
+         * aparecer primero.
+         *
+         * Podría ser:
+         *
+         * historia
+         * pregunta
+         * video
+         * minijuego
+         */
+        sequenceController
+            .StartSequence();
     }
 
-    public void BackToPackages()
-    {
-        AppController.Instance.ResetApplication();
-
-        ShowPackages();
-    }
-
+    /*
+     * Elimina las tarjetas anteriores
+     * antes de volver a crearlas.
+     */
     private void ClearContainer(
         Transform container)
     {
+        if (container == null)
+        {
+            return;
+        }
+
         for (
-            int i = container.childCount - 1;
+            int i =
+                container.childCount - 1;
+
             i >= 0;
+
             i--)
         {
             Destroy(
-                container.GetChild(i).gameObject
+                container
+                    .GetChild(i)
+                    .gameObject
             );
         }
     }
 
-    private void CreateMessageButton(
-        Transform container,
-        string message)
+    /*
+     * Se puede usar después cuando instalemos
+     * nuevos ZIP sin reiniciar la aplicación.
+     */
+    public void ReloadContent()
     {
-        GameObject buttonObject =
-            Instantiate(
-                menuButtonPrefab,
-                container
-            );
+        LoadPackages();
 
-        TMP_Text text =
-            buttonObject.GetComponentInChildren<TMP_Text>();
+        ShowMainMenu();
 
-        Button button =
-            buttonObject.GetComponent<Button>();
-
-        text.text = message;
-
-        button.interactable = false;
+        Debug.Log(
+            "Contenido recargado."
+        );
     }
 }
