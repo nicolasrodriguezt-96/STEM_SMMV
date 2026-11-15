@@ -11,7 +11,15 @@ public class StemPackageModel
     public string descripcion;
     public string portada;
 
+    // Cuestionarios de conocimientos
     public List<string> cuestionarios;
+
+    // Historias
     public List<string> historias;
+
+    // Videos
     public List<string> videos;
+
+    // NUEVO: único test vocacional
+    public string testVocacional;
 }

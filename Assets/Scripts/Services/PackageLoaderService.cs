@@ -91,9 +91,11 @@ public class PackageLoaderService
         LoadQuizzes(loadedPackage);
         LoadStories(loadedPackage);
         LoadVideos(loadedPackage);
+        LoadVocationalTest(loadedPackage);
 
         return loadedPackage;
     }
+
 
     private void LoadQuizzes(
         LoadedPackageModel package)
@@ -225,6 +227,55 @@ public class PackageLoaderService
 
             package.videos.Add(video);
         }
+    }
+
+    private void LoadVocationalTest(
+        LoadedPackageModel package)
+    {
+        string relativePath =
+            package.manifest.testVocacional;
+
+        // El test vocacional es opcional en un ZIP.
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return;
+        }
+
+        string fullPath = Path.Combine(
+            package.rootPath,
+            relativePath
+        );
+
+        if (!File.Exists(fullPath))
+        {
+            throw new System.Exception(
+                "No existe el test vocacional: " +
+                relativePath
+            );
+        }
+
+        string json = File.ReadAllText(fullPath);
+
+        VocationalTestModel test =
+            JsonUtility.FromJson<VocationalTestModel>(json);
+
+        if (test == null)
+        {
+            throw new System.Exception(
+                "No fue posible leer el test vocacional."
+            );
+        }
+
+        package.testVocacional = test;
+
+        Debug.Log(
+            $"Test vocacional cargado: {test.nombre}"
+        );
+
+        Debug.Log(
+            $"Preguntas vocacionales: " +
+            $"{(test.preguntas != null ? test.preguntas.Count : 0)}"
+        );
     }
 
     public string GetPackagesPath()

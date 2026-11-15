@@ -6,14 +6,27 @@ public class LoadedPackageModel
 
     public StemPackageModel manifest;
 
+    // Cuestionarios
     public List<QuizModel> cuestionarios =
         new List<QuizModel>();
 
+    // Historias
     public List<StoryModel> historias =
         new List<StoryModel>();
 
+    // Videos
     public List<VideoModel> videos =
         new List<VideoModel>();
+
+    // NUEVO: test vocacional
+    public VocationalTestModel testVocacional;
+
+    public QuizModel GetQuiz(string id)
+    {
+        return cuestionarios.Find(
+            quiz => quiz.id == id
+        );
+    }
 
     public StoryModel GetStory(string id)
     {
@@ -29,10 +42,8 @@ public class LoadedPackageModel
         );
     }
 
-    public QuizModel GetQuiz(string id)
+    public VocationalTestModel GetVocationalTest()
     {
-        return cuestionarios.Find(
-            quiz => quiz.id == id
-        );
+        return testVocacional;
     }
 }

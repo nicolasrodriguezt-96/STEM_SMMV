@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.gilzoide.sqlite-net": {
+      "version": "https://github.com/gilzoide/unity-sqlite-net.git#1.3.3",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "34340bf93526b5143ac404f13cb5c4fefabaa461"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.14",
       "depth": 0,
@@ -183,6 +190,13 @@
         "com.unity.modules.jsonserialize": "1.0.0"
       },
       "url": "https://packages.unity.com"
+    },
+    "com.yasirkula.simplefilebrowser": {
+      "version": "https://github.com/yasirkula/UnitySimpleFileBrowser.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "b9a2798fa5dbe92815dd6c9cb69e5c1ed69fff66"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",

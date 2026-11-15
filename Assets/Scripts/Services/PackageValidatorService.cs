@@ -6,13 +6,63 @@ using UnityEngine;
 
 public class PackageValidatorService
 {
+    // Las 12 carreras permitidas por nuestra aplicación.
+    private static readonly HashSet<string> AllowedCareers =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "fisica",
+            "quimica",
+            "matematicas",
+            "biologia",
+            "ing_mecatronica",
+            "ing_multimedia",
+            "ing_ambiental",
+            "ing_biomedica",
+            "ciencia_datos",
+            "ciberseguridad",
+            "devops",
+            "inteligencia_artificial"
+        };
+
+    private static readonly HashSet<string> AllowedMinigames =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "circuito_electrico",
+            "robotica",
+            "programacion",
+            "espacio"
+        };
+
+    // ========================================
+    // VALIDAR PAQUETE COMPLETO
+    // ========================================
+
     public void ValidatePackage(
         string rootPath,
         StemPackageModel package)
     {
         if (package == null)
-        {
             throw new Exception("El paquete es nulo.");
+
+        bool hasQuizzes =
+            package.cuestionarios != null &&
+            package.cuestionarios.Count > 0;
+
+        bool hasStories =
+            package.historias != null &&
+            package.historias.Count > 0;
+
+        bool hasVocational =
+            !string.IsNullOrWhiteSpace(
+                package.testVocacional
+            );
+
+        if (!hasQuizzes && !hasStories && !hasVocational)
+        {
+            throw new Exception(
+                "El paquete debe contener cuestionarios, " +
+                "historias o un test vocacional."
+            );
         }
 
         Dictionary<string, StoryModel> stories =
@@ -21,24 +71,85 @@ public class PackageValidatorService
         Dictionary<string, VideoModel> videos =
             LoadVideos(rootPath, package);
 
-        if (package.cuestionarios == null ||
-            package.cuestionarios.Count == 0)
+        if (hasQuizzes)
+        {
+            HashSet<string> quizIds = new HashSet<string>();
+
+            foreach (string path in package.cuestionarios)
+            {
+                QuizModel quiz = ValidateQuiz(
+                    rootPath,
+                    path,
+                    stories,
+                    videos
+                );
+
+                if (!quizIds.Add(quiz.id))
+                {
+                    throw new Exception(
+                        "ID de cuestionario duplicado: " + quiz.id
+                    );
+                }
+            }
+        }
+
+        // NUEVO
+        ValidateVocationalTest(rootPath, package);
+
+        Debug.Log(
+            "Validación completa del paquete STEM correcta."
+        );
+    }
+
+    // ========================================
+    // LEER ARCHIVO JSON
+    // ========================================
+
+    private T ReadJson<T>(
+        string rootPath,
+        string relativePath,
+        string description) where T : class
+    {
+        string fullPath = GetSafeFullPath(
+            rootPath,
+            relativePath
+        );
+
+        if (!File.Exists(fullPath))
         {
             throw new Exception(
-                "El paquete debe contener al menos un cuestionario."
+                $"No existe {description}: {relativePath}"
             );
         }
 
-        foreach (string quizRelativePath in package.cuestionarios)
+        try
         {
-            ValidateQuiz(
-                rootPath,
-                quizRelativePath,
-                stories,
-                videos
+            T result = JsonUtility.FromJson<T>(
+                File.ReadAllText(fullPath)
+            );
+
+            if (result == null)
+            {
+                throw new Exception(
+                    "El JSON no contiene un objeto válido."
+                );
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception(
+                $"Error leyendo {description}: {relativePath}. " +
+                ex.Message,
+                ex
             );
         }
     }
+
+    // ========================================
+    // HISTORIAS
+    // ========================================
 
     private Dictionary<string, StoryModel> LoadStories(
         string rootPath,
@@ -48,37 +159,22 @@ public class PackageValidatorService
             new Dictionary<string, StoryModel>();
 
         if (package.historias == null)
-        {
             return stories;
-        }
 
-        foreach (string relativePath in package.historias)
+        foreach (string path in package.historias)
         {
-            string fullPath =
-                GetSafeFullPath(rootPath, relativePath);
-
-            if (!File.Exists(fullPath))
-            {
-                throw new Exception(
-                    $"No existe la historia: {relativePath}"
-                );
-            }
-
-            string json = File.ReadAllText(fullPath);
-
-            StoryModel story =
-                JsonUtility.FromJson<StoryModel>(json);
-
-            ValidateStory(
+            StoryModel story = ReadJson<StoryModel>(
                 rootPath,
-                story,
-                relativePath
+                path,
+                "historia"
             );
+
+            ValidateStory(rootPath, story);
 
             if (stories.ContainsKey(story.id))
             {
                 throw new Exception(
-                    $"Hay una historia con ID duplicado: {story.id}"
+                    "Historia duplicada: " + story.id
                 );
             }
 
@@ -88,321 +184,15 @@ public class PackageValidatorService
         return stories;
     }
 
-    private Dictionary<string, VideoModel> LoadVideos(
-        string rootPath,
-        StemPackageModel package)
-    {
-        Dictionary<string, VideoModel> videos =
-            new Dictionary<string, VideoModel>();
-
-        if (package.videos == null)
-        {
-            return videos;
-        }
-
-        foreach (string relativePath in package.videos)
-        {
-            string fullPath =
-                GetSafeFullPath(rootPath, relativePath);
-
-            if (!File.Exists(fullPath))
-            {
-                throw new Exception(
-                    $"No existe la definición del video: {relativePath}"
-                );
-            }
-
-            string json = File.ReadAllText(fullPath);
-
-            VideoModel video =
-                JsonUtility.FromJson<VideoModel>(json);
-
-            ValidateVideo(
-                rootPath,
-                video,
-                relativePath
-            );
-
-            if (videos.ContainsKey(video.id))
-            {
-                throw new Exception(
-                    $"Hay un video con ID duplicado: {video.id}"
-                );
-            }
-
-            videos.Add(video.id, video);
-        }
-
-        return videos;
-    }
-
-    private void ValidateQuiz(
-        string rootPath,
-        string relativePath,
-        Dictionary<string, StoryModel> stories,
-        Dictionary<string, VideoModel> videos)
-    {
-        string fullPath =
-            GetSafeFullPath(rootPath, relativePath);
-
-        if (!File.Exists(fullPath))
-        {
-            throw new Exception(
-                $"No existe el cuestionario: {relativePath}"
-            );
-        }
-
-        string json = File.ReadAllText(fullPath);
-
-        QuizModel quiz =
-            JsonUtility.FromJson<QuizModel>(json);
-
-        if (quiz == null)
-        {
-            throw new Exception(
-                $"No fue posible leer el cuestionario: {relativePath}"
-            );
-        }
-
-        if (string.IsNullOrWhiteSpace(quiz.id))
-        {
-            throw new Exception(
-                $"El cuestionario {relativePath} no tiene ID."
-            );
-        }
-
-        if (string.IsNullOrWhiteSpace(quiz.nombre))
-        {
-            throw new Exception(
-                $"El cuestionario {quiz.id} no tiene nombre."
-            );
-        }
-
-        if (!string.IsNullOrWhiteSpace(quiz.imagen))
-        {
-            ValidateExistingFile(
-                rootPath,
-                quiz.imagen,
-                $"imagen del cuestionario {quiz.nombre}"
-            );
-        }
-
-        ValidateQuestions(
-            rootPath,
-            quiz
-        );
-
-        ValidateSequence(
-            quiz,
-            stories,
-            videos
-        );
-    }
-
-    private void ValidateQuestions(
-        string rootPath,
-        QuizModel quiz)
-    {
-        if (quiz.preguntas == null ||
-            quiz.preguntas.Count == 0)
-        {
-            throw new Exception(
-                $"El cuestionario {quiz.nombre} no tiene preguntas."
-            );
-        }
-
-        HashSet<string> questionIds =
-            new HashSet<string>();
-
-        foreach (QuestionModel question in quiz.preguntas)
-        {
-            if (question == null)
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} contiene una pregunta nula."
-                );
-            }
-
-            if (string.IsNullOrWhiteSpace(question.id))
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} contiene una pregunta sin ID."
-                );
-            }
-
-            if (!questionIds.Add(question.id))
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} tiene una pregunta con ID duplicado: {question.id}"
-                );
-            }
-
-            if (string.IsNullOrWhiteSpace(question.texto))
-            {
-                throw new Exception(
-                    $"La pregunta {question.id} no tiene texto."
-                );
-            }
-
-            if (!string.IsNullOrWhiteSpace(question.imagen))
-            {
-                ValidateExistingFile(
-                    rootPath,
-                    question.imagen,
-                    $"imagen de la pregunta {question.id}"
-                );
-            }
-
-            if (question.respuestas == null ||
-                question.respuestas.Count != 4)
-            {
-                throw new Exception(
-                    $"La pregunta {question.id} debe tener exactamente 4 respuestas."
-                );
-            }
-
-            int correctAnswers =
-                question.respuestas.Count(
-                    answer => answer != null && answer.correcta
-                );
-
-            if (correctAnswers != 1)
-            {
-                throw new Exception(
-                    $"La pregunta {question.id} debe tener exactamente una respuesta correcta."
-                );
-            }
-
-            foreach (AnswerModel answer in question.respuestas)
-            {
-                if (answer == null)
-                {
-                    throw new Exception(
-                        $"La pregunta {question.id} contiene una respuesta nula."
-                    );
-                }
-
-                if (string.IsNullOrWhiteSpace(answer.texto))
-                {
-                    throw new Exception(
-                        $"La pregunta {question.id} contiene una respuesta sin texto."
-                    );
-                }
-            }
-        }
-    }
-
-    private void ValidateSequence(
-        QuizModel quiz,
-        Dictionary<string, StoryModel> stories,
-        Dictionary<string, VideoModel> videos)
-    {
-        if (quiz.secuencia == null ||
-            quiz.secuencia.Count == 0)
-        {
-            throw new Exception(
-                $"El cuestionario {quiz.nombre} no tiene secuencia."
-            );
-        }
-
-        HashSet<int> usedOrders =
-            new HashSet<int>();
-
-        foreach (SequenceItemModel item in quiz.secuencia)
-        {
-            if (item == null)
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} contiene un elemento de secuencia nulo."
-                );
-            }
-
-            if (!usedOrders.Add(item.orden))
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} tiene el orden duplicado: {item.orden}"
-                );
-            }
-
-            if (string.IsNullOrWhiteSpace(item.tipo))
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} contiene un elemento sin tipo."
-                );
-            }
-
-            if (string.IsNullOrWhiteSpace(item.id))
-            {
-                throw new Exception(
-                    $"El cuestionario {quiz.nombre} contiene un elemento sin ID."
-                );
-            }
-
-            switch (item.tipo.ToLowerInvariant())
-            {
-                case "pregunta":
-                    if (!quiz.preguntas.Any(
-                        question => question.id == item.id))
-                    {
-                        throw new Exception(
-                            $"La secuencia del cuestionario {quiz.nombre} referencia una pregunta inexistente: {item.id}"
-                        );
-                    }
-                    break;
-
-                case "historia":
-                    if (!stories.ContainsKey(item.id))
-                    {
-                        throw new Exception(
-                            $"La secuencia del cuestionario {quiz.nombre} referencia una historia inexistente: {item.id}"
-                        );
-                    }
-                    break;
-
-                case "video":
-                    if (!videos.ContainsKey(item.id))
-                    {
-                        throw new Exception(
-                            $"La secuencia del cuestionario {quiz.nombre} referencia un video inexistente: {item.id}"
-                        );
-                    }
-                    break;
-
-                case "minijuego":
-                    ValidateMinigame(item.id, quiz.nombre);
-                    break;
-
-                default:
-                    throw new Exception(
-                        $"Tipo de secuencia desconocido en {quiz.nombre}: {item.tipo}"
-                    );
-            }
-        }
-    }
-
     private void ValidateStory(
         string rootPath,
-        StoryModel story,
-        string relativePath)
+        StoryModel story)
     {
-        if (story == null)
+        if (string.IsNullOrWhiteSpace(story.id) ||
+            string.IsNullOrWhiteSpace(story.nombre))
         {
             throw new Exception(
-                $"No fue posible leer la historia: {relativePath}"
-            );
-        }
-
-        if (string.IsNullOrWhiteSpace(story.id))
-        {
-            throw new Exception(
-                $"La historia {relativePath} no tiene ID."
-            );
-        }
-
-        if (string.IsNullOrWhiteSpace(story.nombre))
-        {
-            throw new Exception(
-                $"La historia {story.id} no tiene nombre."
+                "Existe una historia sin ID o nombre."
             );
         }
 
@@ -414,8 +204,7 @@ public class PackageValidatorService
             );
         }
 
-        HashSet<int> orders =
-            new HashSet<int>();
+        HashSet<int> orders = new HashSet<int>();
 
         foreach (StorySceneModel scene in story.escenas)
         {
@@ -429,14 +218,15 @@ public class PackageValidatorService
             if (!orders.Add(scene.orden))
             {
                 throw new Exception(
-                    $"La historia {story.nombre} tiene el orden de escena duplicado: {scene.orden}"
+                    $"Orden duplicado en {story.nombre}: {scene.orden}"
                 );
             }
 
             if (string.IsNullOrWhiteSpace(scene.texto))
             {
                 throw new Exception(
-                    $"La escena {scene.orden} de {story.nombre} no tiene texto."
+                    $"La escena {scene.orden} de {story.nombre} " +
+                    "no tiene texto."
                 );
             }
 
@@ -445,7 +235,7 @@ public class PackageValidatorService
                 ValidateExistingFile(
                     rootPath,
                     scene.imagen,
-                    $"imagen de la historia {story.nombre}"
+                    "imagen de historia"
                 );
             }
 
@@ -454,79 +244,398 @@ public class PackageValidatorService
                 ValidateExistingFile(
                     rootPath,
                     scene.audio,
-                    $"audio de la historia {story.nombre}"
+                    "audio de historia"
                 );
             }
         }
     }
 
-    private void ValidateVideo(
+    // ========================================
+    // VIDEOS
+    // ========================================
+
+    private Dictionary<string, VideoModel> LoadVideos(
         string rootPath,
-        VideoModel video,
-        string relativePath)
+        StemPackageModel package)
     {
-        if (video == null)
+        Dictionary<string, VideoModel> videos =
+            new Dictionary<string, VideoModel>();
+
+        if (package.videos == null)
+            return videos;
+
+        foreach (string path in package.videos)
         {
-            throw new Exception(
-                $"No fue posible leer el video: {relativePath}"
+            VideoModel video = ReadJson<VideoModel>(
+                rootPath,
+                path,
+                "definición de video"
             );
+
+            if (string.IsNullOrWhiteSpace(video.id) ||
+                string.IsNullOrWhiteSpace(video.nombre) ||
+                string.IsNullOrWhiteSpace(video.archivo))
+            {
+                throw new Exception(
+                    $"Definición de video incompleta: {path}"
+                );
+            }
+
+            ValidateExistingFile(
+                rootPath,
+                video.archivo,
+                "archivo de video"
+            );
+
+            if (videos.ContainsKey(video.id))
+            {
+                throw new Exception(
+                    "Video duplicado: " + video.id
+                );
+            }
+
+            videos.Add(video.id, video);
         }
 
-        if (string.IsNullOrWhiteSpace(video.id))
-        {
-            throw new Exception(
-                $"La definición de video {relativePath} no tiene ID."
-            );
-        }
+        return videos;
+    }
 
-        if (string.IsNullOrWhiteSpace(video.nombre))
-        {
-            throw new Exception(
-                $"El video {video.id} no tiene nombre."
-            );
-        }
+    // ========================================
+    // CUESTIONARIOS DE CONOCIMIENTOS
+    // ========================================
 
-        if (string.IsNullOrWhiteSpace(video.archivo))
-        {
-            throw new Exception(
-                $"El video {video.nombre} no tiene archivo."
-            );
-        }
-
-        ValidateExistingFile(
+    private QuizModel ValidateQuiz(
+        string rootPath,
+        string relativePath,
+        Dictionary<string, StoryModel> stories,
+        Dictionary<string, VideoModel> videos)
+    {
+        QuizModel quiz = ReadJson<QuizModel>(
             rootPath,
-            video.archivo,
-            $"archivo de video {video.nombre}"
+            relativePath,
+            "cuestionario"
+        );
+
+        if (string.IsNullOrWhiteSpace(quiz.id) ||
+            string.IsNullOrWhiteSpace(quiz.nombre))
+        {
+            throw new Exception(
+                $"Cuestionario sin ID o nombre: {relativePath}"
+            );
+        }
+
+        if (!string.IsNullOrWhiteSpace(quiz.imagen))
+        {
+            ValidateExistingFile(
+                rootPath,
+                quiz.imagen,
+                "portada del cuestionario"
+            );
+        }
+
+        if (quiz.preguntas == null ||
+            quiz.preguntas.Count == 0)
+        {
+            throw new Exception(
+                $"El cuestionario {quiz.nombre} no tiene preguntas."
+            );
+        }
+
+        HashSet<string> questionIds =
+            new HashSet<string>();
+
+        foreach (QuestionModel question in quiz.preguntas)
+        {
+            if (question == null ||
+                string.IsNullOrWhiteSpace(question.id) ||
+                string.IsNullOrWhiteSpace(question.texto))
+            {
+                throw new Exception(
+                    $"Pregunta incompleta en {quiz.nombre}."
+                );
+            }
+
+            if (!questionIds.Add(question.id))
+            {
+                throw new Exception(
+                    $"Pregunta duplicada: {question.id}"
+                );
+            }
+
+            if (!string.IsNullOrWhiteSpace(question.imagen))
+            {
+                ValidateExistingFile(
+                    rootPath,
+                    question.imagen,
+                    "imagen de pregunta"
+                );
+            }
+
+            if (question.respuestas == null ||
+                question.respuestas.Count != 4)
+            {
+                throw new Exception(
+                    $"La pregunta {question.id} debe tener " +
+                    "exactamente 4 respuestas."
+                );
+            }
+
+            int correctCount = 0;
+
+            foreach (AnswerModel answer in question.respuestas)
+            {
+                if (answer == null ||
+                    string.IsNullOrWhiteSpace(answer.texto))
+                {
+                    throw new Exception(
+                        $"Respuesta incompleta en {question.id}."
+                    );
+                }
+
+                if (answer.correcta)
+                    correctCount++;
+            }
+
+            if (correctCount != 1)
+            {
+                throw new Exception(
+                    $"La pregunta {question.id} debe tener " +
+                    "exactamente una respuesta correcta."
+                );
+            }
+        }
+
+        if (quiz.secuencia == null ||
+            quiz.secuencia.Count == 0)
+        {
+            throw new Exception(
+                $"El cuestionario {quiz.nombre} no tiene secuencia."
+            );
+        }
+
+        HashSet<int> usedOrders = new HashSet<int>();
+
+        foreach (SequenceItemModel item in quiz.secuencia)
+        {
+            if (item == null ||
+                string.IsNullOrWhiteSpace(item.id) ||
+                string.IsNullOrWhiteSpace(item.tipo))
+            {
+                throw new Exception(
+                    $"Secuencia incompleta en {quiz.nombre}."
+                );
+            }
+
+            if (!usedOrders.Add(item.orden))
+            {
+                throw new Exception(
+                    $"Orden duplicado: {item.orden}"
+                );
+            }
+
+            switch (item.tipo.ToLowerInvariant())
+            {
+                case "pregunta":
+
+                    if (!questionIds.Contains(item.id))
+                    {
+                        throw new Exception(
+                            $"Pregunta inexistente: {item.id}"
+                        );
+                    }
+                    break;
+
+                case "historia":
+
+                    if (!stories.ContainsKey(item.id))
+                    {
+                        throw new Exception(
+                            $"Historia inexistente: {item.id}"
+                        );
+                    }
+                    break;
+
+                case "video":
+
+                    if (!videos.ContainsKey(item.id))
+                    {
+                        throw new Exception(
+                            $"Video inexistente: {item.id}"
+                        );
+                    }
+                    break;
+
+                case "minijuego":
+
+                    if (!AllowedMinigames.Contains(item.id))
+                    {
+                        throw new Exception(
+                            $"Minijuego desconocido: {item.id}"
+                        );
+                    }
+                    break;
+
+                default:
+
+                    throw new Exception(
+                        $"Tipo de secuencia desconocido: {item.tipo}"
+                    );
+            }
+        }
+
+        return quiz;
+    }
+
+    // ========================================
+    // NUEVO TEST VOCACIONAL
+    // ========================================
+
+    private void ValidateVocationalTest(
+        string rootPath,
+        StemPackageModel package)
+    {
+        if (string.IsNullOrWhiteSpace(
+            package.testVocacional))
+        {
+            return;
+        }
+
+        VocationalTestModel test =
+            ReadJson<VocationalTestModel>(
+                rootPath,
+                package.testVocacional,
+                "test vocacional"
+            );
+
+        if (string.IsNullOrWhiteSpace(test.id) ||
+            string.IsNullOrWhiteSpace(test.nombre))
+        {
+            throw new Exception(
+                "El test vocacional debe tener ID y nombre."
+            );
+        }
+
+        // Exactamente cuatro carreras por test.
+        if (test.carreras == null ||
+            test.carreras.Count != 4)
+        {
+            throw new Exception(
+                "El test vocacional debe utilizar " +
+                "exactamente 4 carreras STEM."
+            );
+        }
+
+        HashSet<string> careerIds =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (VocationalCareerModel career in test.carreras)
+        {
+            if (career == null ||
+                string.IsNullOrWhiteSpace(career.id) ||
+                string.IsNullOrWhiteSpace(career.nombre))
+            {
+                throw new Exception(
+                    "Existe una carrera sin ID o nombre."
+                );
+            }
+
+            if (!AllowedCareers.Contains(career.id))
+            {
+                throw new Exception(
+                    "Carrera STEM no permitida: " + career.id
+                );
+            }
+
+            if (!careerIds.Add(career.id))
+            {
+                throw new Exception(
+                    "Carrera duplicada: " + career.id
+                );
+            }
+        }
+
+        if (test.preguntas == null ||
+            test.preguntas.Count == 0)
+        {
+            throw new Exception(
+                "El test vocacional no tiene preguntas."
+            );
+        }
+
+        HashSet<string> questionIds =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (VocationalQuestionModel question in test.preguntas)
+        {
+            if (question == null ||
+                string.IsNullOrWhiteSpace(question.id) ||
+                string.IsNullOrWhiteSpace(question.texto))
+            {
+                throw new Exception(
+                    "Existe una pregunta vocacional incompleta."
+                );
+            }
+
+            if (!questionIds.Add(question.id))
+            {
+                throw new Exception(
+                    $"Pregunta vocacional duplicada: {question.id}"
+                );
+            }
+
+            if (question.respuestas == null ||
+                question.respuestas.Count != 4)
+            {
+                throw new Exception(
+                    $"La pregunta vocacional {question.id} debe " +
+                    "tener exactamente 4 respuestas."
+                );
+            }
+
+            foreach (VocationalAnswerModel answer in question.respuestas)
+            {
+                if (answer == null ||
+                    string.IsNullOrWhiteSpace(answer.texto) ||
+                    string.IsNullOrWhiteSpace(answer.carreraId))
+                {
+                    throw new Exception(
+                        $"Respuesta incompleta en {question.id}."
+                    );
+                }
+
+                // La respuesta debe referenciar una de
+                // las cuatro carreras del test.
+                if (!careerIds.Contains(answer.carreraId))
+                {
+                    throw new Exception(
+                        $"La pregunta {question.id} referencia " +
+                        $"una carrera no incluida en el test: " +
+                        answer.carreraId
+                    );
+                }
+            }
+        }
+
+        Debug.Log(
+            $"Test vocacional validado: {test.nombre} | " +
+            $"Carreras: {test.carreras.Count} | " +
+            $"Preguntas: {test.preguntas.Count}"
         );
     }
 
-    private void ValidateMinigame(
-        string minigameId,
-        string quizName)
-    {
-        string[] validMinigames =
-        {
-            "circuito_electrico",
-            "robotica",
-            "programacion",
-            "espacio"
-        };
-
-        if (!validMinigames.Contains(minigameId))
-        {
-            throw new Exception(
-                $"El cuestionario {quizName} referencia un minijuego desconocido: {minigameId}"
-            );
-        }
-    }
+    // ========================================
+    // VALIDACIÓN DE ARCHIVOS Y RUTAS
+    // ========================================
 
     private void ValidateExistingFile(
         string rootPath,
         string relativePath,
         string description)
     {
-        string fullPath =
-            GetSafeFullPath(rootPath, relativePath);
+        string fullPath = GetSafeFullPath(
+            rootPath,
+            relativePath
+        );
 
         if (!File.Exists(fullPath))
         {
@@ -547,13 +656,19 @@ public class PackageValidatorService
             );
         }
 
-        string fullRootPath =
-            Path.GetFullPath(rootPath);
-
-        string fullPath =
-            Path.GetFullPath(
-                Path.Combine(rootPath, relativePath)
+        if (Path.IsPathRooted(relativePath) ||
+            relativePath.Contains(":"))
+        {
+            throw new Exception(
+                "Ruta absoluta no permitida: " + relativePath
             );
+        }
+
+        string normalized = relativePath
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+
+        string fullRootPath = Path.GetFullPath(rootPath);
 
         string rootWithSeparator =
             fullRootPath.TrimEnd(
@@ -561,12 +676,22 @@ public class PackageValidatorService
                 Path.AltDirectorySeparatorChar
             ) + Path.DirectorySeparatorChar;
 
+        string fullPath = Path.GetFullPath(
+            Path.Combine(fullRootPath, normalized)
+        );
+
+        StringComparison comparison =
+            Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
         if (!fullPath.StartsWith(
-                rootWithSeparator,
-                StringComparison.OrdinalIgnoreCase))
+            rootWithSeparator,
+            comparison))
         {
             throw new Exception(
-                $"Ruta no permitida dentro del paquete: {relativePath}"
+                "Ruta no permitida dentro del paquete: " +
+                relativePath
             );
         }
 

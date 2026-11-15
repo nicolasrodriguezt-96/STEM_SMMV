@@ -3,39 +3,50 @@ using UnityEngine;
 
 public class MainMenuView : MonoBehaviour
 {
-    [Header("Panels")]
-    [SerializeField]
-    private GameObject mainPanel;
+    // ========================================
+    // PANELES
+    // ========================================
 
-    [SerializeField]
-    private GameObject testsPanel;
+    [Header("Paneles principales")]
+    [SerializeField] private GameObject mainPanel;
+    [SerializeField] private GameObject testsPanel;
+    [SerializeField] private GameObject storiesPanel;
 
-    [SerializeField]
-    private GameObject storiesPanel;
+    [Header("Paneles de contenido")]
+    [SerializeField] private GameObject storyPanel;
+    [SerializeField] private GameObject quizPanel;
+    [SerializeField] private GameObject resultPanel;
 
-    [SerializeField]
-    private GameObject storyPanel;
+    [Header("Paneles del test vocacional")]
+    [SerializeField] private GameObject vocationalTestPanel;
+    [SerializeField] private GameObject vocationalResultPanel;
 
-    [SerializeField]
-    private GameObject quizPanel;
+    // ========================================
+    // CONTENEDORES
+    // ========================================
 
-    [Header("Containers")]
-    [SerializeField]
-    private Transform testsContainer;
+    [Header("Contenedores")]
+    [SerializeField] private Transform testsContainer;
+    [SerializeField] private Transform storiesContainer;
 
-    [SerializeField]
-    private Transform storiesContainer;
+    [Header("Prefab de tarjetas")]
+    [SerializeField] private GameObject contentCardPrefab;
 
-    [Header("Prefab")]
-    [SerializeField]
-    private GameObject contentCardPrefab;
+    // ========================================
+    // CONTROLADORES
+    // ========================================
 
-    [Header("Controllers")]
-    [SerializeField]
-    private StoryController storyController;
+    [Header("Controladores")]
+    [SerializeField] private StoryController storyController;
+    [SerializeField] private SequenceController sequenceController;
 
+    [Header("Controlador vocacional")]
     [SerializeField]
-    private SequenceController sequenceController;
+    private VocationalTestController vocationalTestController;
+
+    // ========================================
+    // SERVICIOS
+    // ========================================
 
     private PackageLoaderService packageLoader;
     private ImageLoaderService imageLoader;
@@ -43,40 +54,59 @@ public class MainMenuView : MonoBehaviour
     private List<LoadedPackageModel> loadedPackages =
         new List<LoadedPackageModel>();
 
+    // ========================================
+    // INICIALIZACIÓN
+    // ========================================
+
+    private void Awake()
+    {
+        // Evitar que los paneles vocacionales
+        // aparezcan al iniciar la escena.
+
+        if (vocationalTestPanel != null)
+        {
+            vocationalTestPanel.SetActive(false);
+        }
+
+        if (vocationalResultPanel != null)
+        {
+            vocationalResultPanel.SetActive(false);
+        }
+    }
+
     private void Start()
     {
-        packageLoader =
-            new PackageLoaderService();
+        packageLoader = new PackageLoaderService();
 
-        imageLoader =
-            new ImageLoaderService();
+        imageLoader = new ImageLoaderService();
 
         LoadPackages();
 
         ShowMainMenu();
     }
 
-    /*
-     * Carga todos los paquetes STEM
-     * instalados en persistentDataPath.
-     */
+    // ========================================
+    // CARGAR PAQUETES
+    // ========================================
+
     private void LoadPackages()
     {
-        loadedPackages =
-            packageLoader.LoadAllPackages();
+        loadedPackages = packageLoader.LoadAllPackages();
+
+        if (loadedPackages == null)
+        {
+            loadedPackages = new List<LoadedPackageModel>();
+        }
 
         Debug.Log(
-            $"Paquetes cargados para el menú: {loadedPackages.Count}"
+            $"Paquetes cargados: {loadedPackages.Count}"
         );
     }
 
-    /*
-     * PANTALLA PRINCIPAL
-     *
-     * Test Vocacional
-     * Historias
-     * Minijuegos
-     */
+    // ========================================
+    // MENÚ PRINCIPAL
+    // ========================================
+
     public void ShowMainMenu()
     {
         HideAllPanels();
@@ -87,10 +117,10 @@ public class MainMenuView : MonoBehaviour
         }
     }
 
-    /*
-     * Muestra todos los tests vocacionales
-     * encontrados en todos los paquetes.
-     */
+    // ========================================
+    // MOSTRAR CUESTIONARIOS NORMALES
+    // ========================================
+
     public void ShowTests()
     {
         HideAllPanels();
@@ -100,53 +130,112 @@ public class MainMenuView : MonoBehaviour
             testsPanel.SetActive(true);
         }
 
-        ClearContainer(
-            testsContainer
-        );
+        ClearContainer(testsContainer);
 
         int totalTests = 0;
 
-        foreach (
-            LoadedPackageModel package
-            in loadedPackages)
+        foreach (LoadedPackageModel package in loadedPackages)
         {
-            if (package == null)
+            if (package == null ||
+                package.cuestionarios == null)
             {
                 continue;
             }
 
-            if (package.cuestionarios == null)
-            {
-                continue;
-            }
-
-            foreach (
-                QuizModel quiz
-                in package.cuestionarios)
+            foreach (QuizModel quiz in package.cuestionarios)
             {
                 if (quiz == null)
                 {
                     continue;
                 }
 
-                CreateQuizCard(
-                    package,
-                    quiz
-                );
+                CreateQuizCard(package, quiz);
 
                 totalTests++;
             }
         }
 
         Debug.Log(
-            $"Tests vocacionales disponibles: {totalTests}"
+            $"Retos de conocimiento disponibles: {totalTests}"
         );
     }
 
-    /*
-     * Muestra todas las historias
-     * disponibles en los paquetes.
-     */
+    // ========================================
+    // ABRIR EL TEST VOCACIONAL
+    // ========================================
+
+    public void OpenVocationalTest()
+    {
+        if (vocationalTestController == null)
+        {
+            Debug.LogError(
+                "No se ha asignado VocationalTestController."
+            );
+
+            return;
+        }
+
+        if (loadedPackages == null)
+        {
+            Debug.LogError(
+                "No se han cargado los paquetes."
+            );
+
+            return;
+        }
+
+        LoadedPackageModel selectedPackage = null;
+
+        int totalVocationalTests = 0;
+
+        foreach (LoadedPackageModel package in loadedPackages)
+        {
+            if (package == null ||
+                package.testVocacional == null)
+            {
+                continue;
+            }
+
+            totalVocationalTests++;
+
+            selectedPackage = package;
+        }
+
+        if (totalVocationalTests == 0)
+        {
+            Debug.LogWarning(
+                "No hay ningún test vocacional instalado."
+            );
+
+            return;
+        }
+
+        if (totalVocationalTests > 1)
+        {
+            Debug.LogError(
+                "Hay más de un test vocacional instalado. " +
+                "Soluciona el conflicto antes de continuar."
+            );
+
+            return;
+        }
+
+        Debug.Log(
+            "Abriendo test vocacional: " +
+            selectedPackage.testVocacional.nombre
+        );
+
+        HideAllPanels();
+
+        vocationalTestController.StartTest(
+            selectedPackage
+        );
+    }
+
+    // ========================================
+    // MOSTRAR HISTORIAS
+    // ========================================
+
     public void ShowStories()
     {
         HideAllPanels();
@@ -156,39 +245,26 @@ public class MainMenuView : MonoBehaviour
             storiesPanel.SetActive(true);
         }
 
-        ClearContainer(
-            storiesContainer
-        );
+        ClearContainer(storiesContainer);
 
         int totalStories = 0;
 
-        foreach (
-            LoadedPackageModel package
-            in loadedPackages)
+        foreach (LoadedPackageModel package in loadedPackages)
         {
-            if (package == null)
+            if (package == null ||
+                package.historias == null)
             {
                 continue;
             }
 
-            if (package.historias == null)
-            {
-                continue;
-            }
-
-            foreach (
-                StoryModel story
-                in package.historias)
+            foreach (StoryModel story in package.historias)
             {
                 if (story == null)
                 {
                     continue;
                 }
 
-                CreateStoryCard(
-                    package,
-                    story
-                );
+                CreateStoryCard(package, story);
 
                 totalStories++;
             }
@@ -199,12 +275,10 @@ public class MainMenuView : MonoBehaviour
         );
     }
 
-    /*
-     * Oculta absolutamente todos los paneles.
-     *
-     * Esto evita que QuizPanel o StoryPanel
-     * queden visibles accidentalmente.
-     */
+    // ========================================
+    // OCULTAR TODOS LOS PANELES
+    // ========================================
+
     public void HideAllPanels()
     {
         if (mainPanel != null)
@@ -231,12 +305,29 @@ public class MainMenuView : MonoBehaviour
         {
             quizPanel.SetActive(false);
         }
+
+        if (resultPanel != null)
+        {
+            resultPanel.SetActive(false);
+        }
+
+        // NUEVOS PANELES VOCACIONALES
+
+        if (vocationalTestPanel != null)
+        {
+            vocationalTestPanel.SetActive(false);
+        }
+
+        if (vocationalResultPanel != null)
+        {
+            vocationalResultPanel.SetActive(false);
+        }
     }
 
-    /*
-     * Crea una tarjeta visual
-     * para un Test Vocacional.
-     */
+    // ========================================
+    // CREAR TARJETA DE CUESTIONARIO
+    // ========================================
+
     private void CreateQuizCard(
         LoadedPackageModel package,
         QuizModel quiz)
@@ -244,7 +335,7 @@ public class MainMenuView : MonoBehaviour
         if (contentCardPrefab == null)
         {
             Debug.LogError(
-                "No se asignó ContentCardPrefab en MainMenuView."
+                "ContentCardPrefab no está asignado."
             );
 
             return;
@@ -253,84 +344,60 @@ public class MainMenuView : MonoBehaviour
         if (testsContainer == null)
         {
             Debug.LogError(
-                "No se asignó TestsContainer en MainMenuView."
+                "TestsContainer no está asignado."
             );
 
             return;
         }
 
-        GameObject cardObject =
-            Instantiate(
-                contentCardPrefab,
-                testsContainer
-            );
+        GameObject cardObject = Instantiate(
+            contentCardPrefab,
+            testsContainer
+        );
 
         ContentCardView card =
-            cardObject
-                .GetComponent<ContentCardView>();
+            cardObject.GetComponent<ContentCardView>();
 
         if (card == null)
         {
             Debug.LogError(
-                "El prefab ContentCard no tiene ContentCardView."
+                "El prefab no tiene ContentCardView."
             );
 
-            Destroy(
-                cardObject
-            );
+            Destroy(cardObject);
 
             return;
         }
 
-        /*
-         * Nombre del test.
-         */
         if (card.TitleText != null)
         {
-            card.TitleText.text =
-                quiz.nombre;
+            card.TitleText.text = quiz.nombre;
         }
 
-        /*
-         * Imagen de portada del quiz.
-         */
         Sprite sprite = null;
 
-        if (!string.IsNullOrWhiteSpace(
-                quiz.imagen))
+        if (!string.IsNullOrWhiteSpace(quiz.imagen))
         {
-            sprite =
-                imageLoader.LoadSprite(
-                    package.rootPath,
-                    quiz.imagen
-                );
+            sprite = imageLoader.LoadSprite(
+                package.rootPath,
+                quiz.imagen
+            );
         }
 
-        card.SetImage(
-            sprite
-        );
+        card.SetImage(sprite);
 
-        /*
-         * Click de la tarjeta.
-         */
         if (card.Button != null)
         {
-            card.Button
-                .onClick
-                .AddListener(
-                    () =>
-                        OpenQuiz(
-                            package,
-                            quiz
-                        )
-                );
+            card.Button.onClick.AddListener(
+                () => OpenQuiz(package, quiz)
+            );
         }
     }
 
-    /*
-     * Crea una tarjeta visual
-     * para una historia.
-     */
+    // ========================================
+    // CREAR TARJETA DE HISTORIA
+    // ========================================
+
     private void CreateStoryCard(
         LoadedPackageModel package,
         StoryModel story)
@@ -338,7 +405,7 @@ public class MainMenuView : MonoBehaviour
         if (contentCardPrefab == null)
         {
             Debug.LogError(
-                "No se asignó ContentCardPrefab en MainMenuView."
+                "ContentCardPrefab no está asignado."
             );
 
             return;
@@ -347,173 +414,135 @@ public class MainMenuView : MonoBehaviour
         if (storiesContainer == null)
         {
             Debug.LogError(
-                "No se asignó StoriesContainer en MainMenuView."
+                "StoriesContainer no está asignado."
             );
 
             return;
         }
 
-        GameObject cardObject =
-            Instantiate(
-                contentCardPrefab,
-                storiesContainer
-            );
+        GameObject cardObject = Instantiate(
+            contentCardPrefab,
+            storiesContainer
+        );
 
         ContentCardView card =
-            cardObject
-                .GetComponent<ContentCardView>();
+            cardObject.GetComponent<ContentCardView>();
 
         if (card == null)
         {
             Debug.LogError(
-                "El prefab ContentCard no tiene ContentCardView."
+                "El prefab no tiene ContentCardView."
             );
 
-            Destroy(
-                cardObject
+            Destroy(cardObject);
+
+            return;
+        }
+
+        if (card.TitleText != null)
+        {
+            card.TitleText.text = story.nombre;
+        }
+
+        string imagePath = GetFirstStoryImage(story);
+
+        Sprite sprite = null;
+
+        if (!string.IsNullOrWhiteSpace(imagePath))
+        {
+            sprite = imageLoader.LoadSprite(
+                package.rootPath,
+                imagePath
+            );
+        }
+
+        card.SetImage(sprite);
+
+        if (card.Button != null)
+        {
+            card.Button.onClick.AddListener(
+                () => OpenStory(package, story)
+            );
+        }
+    }
+
+    // ========================================
+    // OBTENER PRIMERA IMAGEN DE HISTORIA
+    // ========================================
+
+    private string GetFirstStoryImage(StoryModel story)
+    {
+        if (story == null ||
+            story.escenas == null ||
+            story.escenas.Count == 0)
+        {
+            return null;
+        }
+
+        StorySceneModel firstWithImage = null;
+
+        foreach (StorySceneModel scene in story.escenas)
+        {
+            if (scene == null ||
+                string.IsNullOrWhiteSpace(scene.imagen))
+            {
+                continue;
+            }
+
+            if (firstWithImage == null ||
+                scene.orden < firstWithImage.orden)
+            {
+                firstWithImage = scene;
+            }
+        }
+
+        return firstWithImage != null
+            ? firstWithImage.imagen
+            : null;
+    }
+
+    // ========================================
+    // ABRIR HISTORIA INDEPENDIENTE
+    // ========================================
+
+    private void OpenStory(
+        LoadedPackageModel package,
+        StoryModel story)
+    {
+        if (AppController.Instance == null)
+        {
+            Debug.LogError(
+                "AppController no está activo."
             );
 
             return;
         }
 
-        /*
-         * Nombre de la historia.
-         */
-        if (card.TitleText != null)
+        if (storyController == null)
         {
-            card.TitleText.text =
-                story.nombre;
-        }
-
-        /*
-         * Tomamos la primera imagen
-         * disponible entre las escenas.
-         */
-        string imagePath =
-            GetFirstStoryImage(
-                story
+            Debug.LogError(
+                "StoryController no está asignado."
             );
 
-        Sprite sprite = null;
-
-        if (!string.IsNullOrWhiteSpace(
-                imagePath))
-        {
-            sprite =
-                imageLoader.LoadSprite(
-                    package.rootPath,
-                    imagePath
-                );
+            return;
         }
 
-        card.SetImage(
-            sprite
+        AppController.Instance.SelectPackage(package);
+
+        Debug.Log(
+            $"Abriendo historia: {story.nombre}"
         );
 
-        /*
-         * Click de la tarjeta.
-         */
-        if (card.Button != null)
-        {
-            card.Button
-                .onClick
-                .AddListener(
-                    () =>
-                        OpenStory(
-                            package,
-                            story
-                        )
-                );
-        }
-    }
-
-    /*
-     * Busca la primera imagen disponible
-     * dentro de las escenas de una historia.
-     */
-    private string GetFirstStoryImage(
-        StoryModel story)
-    {
-        if (story == null)
-        {
-            return null;
-        }
-
-        if (story.escenas == null)
-        {
-            return null;
-        }
-
-        if (story.escenas.Count == 0)
-        {
-            return null;
-        }
-
-        foreach (
-            StorySceneModel scene
-            in story.escenas)
-        {
-            if (scene == null)
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(
-                    scene.imagen))
-            {
-                return scene.imagen;
-            }
-        }
-
-        return null;
-    }
-
-    /*
-     * Abre una historia directamente
-     * desde el menú de historias.
-     */
-
-private void OpenStory(
-    LoadedPackageModel package,
-    StoryModel story)
-{
-    if (AppController.Instance == null)
-    {
-        Debug.LogError(
-            "No existe un AppController activo."
-        );
-
-        return;
-    }
-
-    if (storyController == null)
-    {
-        Debug.LogError(
-            "StoryController no está asignado."
-        );
-
-        return;
-    }
-
-    AppController.Instance
-        .SelectPackage(
-            package
-        );
-
-    Debug.Log(
-        $"Abriendo historia independiente: {story.nombre}"
-    );
-
-    storyController
-        .OpenStandaloneStory(
+        storyController.OpenStandaloneStory(
             package,
             story
         );
-}
+    }
 
-    /*
-     * Inicia un Test Vocacional.
-     */
+    // ========================================
+    // ABRIR CUESTIONARIO NORMAL
+    // ========================================
+
     private void OpenQuiz(
         LoadedPackageModel package,
         QuizModel quiz)
@@ -521,7 +550,7 @@ private void OpenStory(
         if (AppController.Instance == null)
         {
             Debug.LogError(
-                "No existe un AppController activo."
+                "AppController no está activo."
             );
 
             return;
@@ -530,96 +559,66 @@ private void OpenStory(
         if (sequenceController == null)
         {
             Debug.LogError(
-                "SequenceController no está asignado en MainMenuView."
+                "SequenceController no está asignado."
             );
 
             return;
         }
 
-        /*
-         * Guardamos el paquete actual.
-         */
-        AppController.Instance
-            .SelectPackage(
-                package
-            );
+        AppController.Instance.SelectPackage(package);
 
-        /*
-         * Inicializamos:
-         *
-         * CurrentQuiz
-         * Score = 0
-         * CurrentSequenceIndex = 0
-         * QuizStartTime
-         */
-        AppController.Instance
-            .StartQuiz(
-                quiz
-            );
+        AppController.Instance.StartQuiz(quiz);
 
         Debug.Log(
-            $"Iniciando Test Vocacional: {quiz.nombre}"
+            $"Iniciando cuestionario: {quiz.nombre}"
         );
 
-        /*
-         * IMPORTANTE:
-         *
-         * NO abrimos QuizPanel directamente.
-         *
-         * La secuencia del JSON decide qué debe
-         * aparecer primero.
-         *
-         * Podría ser:
-         *
-         * historia
-         * pregunta
-         * video
-         * minijuego
-         */
-        sequenceController
-            .StartSequence();
+        sequenceController.StartSequence();
     }
 
-    /*
-     * Elimina las tarjetas anteriores
-     * antes de volver a crearlas.
-     */
-    private void ClearContainer(
-        Transform container)
+    // ========================================
+    // ELIMINAR TARJETAS ANTERIORES
+    // ========================================
+
+    private void ClearContainer(Transform container)
     {
         if (container == null)
         {
             return;
         }
 
-        for (
-            int i =
-                container.childCount - 1;
-
-            i >= 0;
-
-            i--)
+        for (int i = container.childCount - 1;
+             i >= 0;
+             i--)
         {
             Destroy(
-                container
-                    .GetChild(i)
-                    .gameObject
+                container.GetChild(i).gameObject
             );
         }
     }
 
-    /*
-     * Se puede usar después cuando instalemos
-     * nuevos ZIP sin reiniciar la aplicación.
-     */
+    // ========================================
+    // RECARGAR PAQUETES
+    // ========================================
+
     public void ReloadContent()
     {
+        if (packageLoader == null)
+        {
+            packageLoader = new PackageLoaderService();
+        }
+
+        if (imageLoader == null)
+        {
+            imageLoader = new ImageLoaderService();
+        }
+
         LoadPackages();
 
         ShowMainMenu();
 
         Debug.Log(
-            "Contenido recargado."
+            "Contenido STEM recargado correctamente."
         );
     }
 }

@@ -5,39 +5,30 @@ using UnityEngine.UI;
 public class QuizView : MonoBehaviour
 {
     [Header("Panel")]
-    [SerializeField]
-    private GameObject panel;
+    [SerializeField] private GameObject panel;
 
     [Header("Texts")]
-    [SerializeField]
-    private TMP_Text titleText;
-
-    [SerializeField]
-    private TMP_Text questionText;
-
-    [SerializeField]
-    private TMP_Text progressText;
+    [SerializeField] private TMP_Text titleText;
+    [SerializeField] private TMP_Text questionText;
+    [SerializeField] private TMP_Text progressText;
 
     [Header("Image")]
-    [SerializeField]
-    private Image questionImage;
+    [SerializeField] private Image questionImage;
 
     [Header("Answers")]
-    [SerializeField]
-    private Button answerAButton;
-
-    [SerializeField]
-    private Button answerBButton;
-
-    [SerializeField]
-    private Button answerCButton;
-
-    [SerializeField]
-    private Button answerDButton;
+    [SerializeField] private Button answerAButton;
+    [SerializeField] private Button answerBButton;
+    [SerializeField] private Button answerCButton;
+    [SerializeField] private Button answerDButton;
 
     [Header("Navigation")]
-    [SerializeField]
-    private Button exitButton;
+    [SerializeField] private Button exitButton;
+
+    private Button[] answerButtons;
+    private Image[] answerImages;
+    private Color[] initialColors;
+    private Selectable.Transition[] initialTransitions;
+    private bool initialized;
 
     public Button AnswerAButton => answerAButton;
     public Button AnswerBButton => answerBButton;
@@ -47,123 +38,141 @@ public class QuizView : MonoBehaviour
 
     public void Show()
     {
-        if (panel != null)
-        {
-            panel.SetActive(true);
-        }
+        if (panel != null) panel.SetActive(true);
     }
 
     public void Hide()
     {
-        if (panel != null)
-        {
-            panel.SetActive(false);
-        }
+        if (panel != null) panel.SetActive(false);
     }
 
     public void SetTitle(string title)
     {
-        if (titleText != null)
-        {
-            titleText.text = title;
-        }
+        if (titleText != null) titleText.text = title;
     }
 
     public void SetQuestion(string question)
     {
-        if (questionText != null)
-        {
-            questionText.text = question;
-        }
+        if (questionText != null) questionText.text = question;
     }
 
-    public void SetProgress(
-        int current,
-        int total)
+    public void SetProgress(int current, int total)
     {
-        if (progressText != null)
-        {
-            progressText.text =
-                $"{current} / {total}";
-        }
+        if (progressText != null) progressText.text = $"{current} / {total}";
     }
 
     public void SetImage(Sprite sprite)
     {
-        if (questionImage == null)
-        {
-            return;
-        }
-
-        if (sprite == null)
-        {
-            questionImage.sprite = null;
-            questionImage.enabled = false;
-
-            return;
-        }
-
-        questionImage.enabled = true;
+        if (questionImage == null) return;
         questionImage.sprite = sprite;
+        questionImage.enabled = sprite != null;
         questionImage.preserveAspect = true;
     }
 
-    public void SetAnswerText(
-        int index,
-        string text)
+    public void SetAnswerText(int index, string text)
     {
-        Button button =
-            GetAnswerButton(index);
+        Button button = GetAnswerButton(index);
+        if (button == null) return;
 
-        if (button == null)
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>();
+        if (label != null) label.text = text;
+    }
+
+    public void SetAnswersInteractable(bool interactable)
+    {
+        CacheButtons();
+        foreach (Button button in answerButtons)
         {
-            return;
-        }
-
-        TMP_Text tmp =
-            button.GetComponentInChildren<TMP_Text>();
-
-        if (tmp != null)
-        {
-            tmp.text = text;
+            if (button != null) button.interactable = interactable;
         }
     }
 
-    public void SetAnswersInteractable(
-        bool interactable)
+    // Rojo para la opción incorrecta; verde para la correcta.
+    public void ShowAnswerFeedback(int selectedIndex, int correctIndex,
+        Color correctColor, Color incorrectColor)
     {
-        if (answerAButton != null)
-            answerAButton.interactable = interactable;
+        CacheButtons();
 
-        if (answerBButton != null)
-            answerBButton.interactable = interactable;
+        for (int i = 0; i < answerButtons.Length; i++)
+        {
+            Button button = answerButtons[i];
+            if (button == null) continue;
 
-        if (answerCButton != null)
-            answerCButton.interactable = interactable;
+            // Desactiva temporalmente el tint automático del botón.
+            button.transition = Selectable.Transition.None;
+            if (button.targetGraphic != null)
+                button.targetGraphic.CrossFadeColor(Color.white, 0f, true, true);
 
-        if (answerDButton != null)
-            answerDButton.interactable = interactable;
+            if (answerImages[i] != null)
+            {
+                answerImages[i].color = i == correctIndex
+                    ? correctColor
+                    : (i == selectedIndex ? incorrectColor : initialColors[i]);
+            }
+
+            button.interactable = false;
+        }
     }
 
-    private Button GetAnswerButton(
-        int index)
+    // Devuelve colores, transiciones y botones a su estado original.
+    public void ResetAnswerStyles()
     {
-        switch (index)
+        CacheButtons();
+
+        for (int i = 0; i < answerButtons.Length; i++)
         {
-            case 0:
-                return answerAButton;
+            Button button = answerButtons[i];
+            if (button == null) continue;
 
-            case 1:
-                return answerBButton;
+            button.transition = Selectable.Transition.None;
 
-            case 2:
-                return answerCButton;
+            if (answerImages[i] != null)
+                answerImages[i].color = initialColors[i];
 
-            case 3:
-                return answerDButton;
+            if (button.targetGraphic != null)
+                button.targetGraphic.CrossFadeColor(Color.white, 0f, true, true);
 
-            default:
-                return null;
+            button.transition = initialTransitions[i];
+            button.interactable = true;
         }
+    }
+
+    private Button GetAnswerButton(int index)
+    {
+        CacheButtons();
+        return index >= 0 && index < answerButtons.Length
+            ? answerButtons[index]
+            : null;
+    }
+
+    private void CacheButtons()
+    {
+        if (initialized) return;
+
+        answerButtons = new[]
+        {
+            answerAButton, answerBButton, answerCButton, answerDButton
+        };
+
+        answerImages = new Image[answerButtons.Length];
+        initialColors = new Color[answerButtons.Length];
+        initialTransitions = new Selectable.Transition[answerButtons.Length];
+
+        for (int i = 0; i < answerButtons.Length; i++)
+        {
+            Button button = answerButtons[i];
+            if (button == null) continue;
+
+            answerImages[i] = button.targetGraphic as Image;
+            if (answerImages[i] == null)
+                answerImages[i] = button.GetComponent<Image>();
+
+            initialColors[i] = answerImages[i] != null
+                ? answerImages[i].color
+                : Color.white;
+            initialTransitions[i] = button.transition;
+        }
+
+        initialized = true;
     }
 }
