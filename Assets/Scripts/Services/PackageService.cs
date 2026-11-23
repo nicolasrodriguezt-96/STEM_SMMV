@@ -41,285 +41,143 @@ public class PackageService
     public string InstallPackage(string zipPath)
     {
         if (string.IsNullOrWhiteSpace(zipPath))
-        {
-            throw new Exception(
-                "La ruta del ZIP está vacía."
-            );
-        }
+            throw new Exception("La ruta del ZIP está vacía.");
 
         if (!File.Exists(zipPath))
-        {
-            throw new Exception(
-                "No se encontró el archivo ZIP: " + zipPath
-            );
-        }
+            throw new Exception("No se encontró el archivo ZIP: " + zipPath);
 
-        if (!string.Equals(
-            Path.GetExtension(zipPath),
-            ".zip",
+        if (!string.Equals(Path.GetExtension(zipPath), ".zip",
             StringComparison.OrdinalIgnoreCase))
         {
-            throw new Exception(
-                "El archivo seleccionado debe ser un ZIP."
-            );
+            throw new Exception("El archivo seleccionado debe ser un ZIP.");
         }
 
-        string tempPath = Path.Combine(
-            tempRootPath,
-            Guid.NewGuid().ToString("N")
-        );
+        // La extracción y la validación se hacen ANTES de tocar los
+        // paquetes instalados, para no perder datos ante un ZIP inválido.
+        string stagingPath = Path.Combine(
+            tempRootPath, "incoming_" + Guid.NewGuid().ToString("N"));
 
-        Directory.CreateDirectory(tempPath);
+        // El respaldo se guarda en STEM/Temp, fuera de STEM/Packages.
+        // Ambos directorios están en el mismo volumen: Directory.Move
+        // conserva la posibilidad de restaurarlos sin copiarlos.
+        string backupPath = Path.Combine(
+            tempRootPath, "packages_backup_" + Guid.NewGuid().ToString("N"));
 
         string destinationPath = null;
-        string backupPath = null;
+        bool previousPackagesBackedUp = false;
+        bool installationCommitted = false;
 
-        bool previousPackageMoved = false;
-        bool newPackageInstalled = false;
+        Directory.CreateDirectory(stagingPath);
 
         try
         {
-            // ====================================
-            // 1. EXTRAER ZIP
-            // ====================================
+            // 1. Extraer y comprobar el ZIP COMPLETO.
+            Debug.Log("Extrayendo paquete: " + Path.GetFileName(zipPath));
+            ZipFile.ExtractToDirectory(zipPath, stagingPath);
 
-            Debug.Log(
-                "Extrayendo paquete: " +
-                Path.GetFileName(zipPath)
-            );
-
-            ZipFile.ExtractToDirectory(
-                zipPath,
-                tempPath
-            );
-
-            // ====================================
-            // 2. BUSCAR MANIFEST
-            // ====================================
-
-            string manifestPath = Path.Combine(
-                tempPath,
-                "manifest.json"
-            );
-
+            string manifestPath = Path.Combine(stagingPath, "manifest.json");
             if (!File.Exists(manifestPath))
             {
                 throw new Exception(
-                    "El ZIP no contiene manifest.json " +
-                    "en su carpeta raíz."
-                );
+                    "El ZIP no contiene manifest.json en su carpeta raíz.");
             }
 
-            // ====================================
-            // 3. LEER MANIFEST
-            // ====================================
-
-            string manifestJson =
-                File.ReadAllText(manifestPath);
-
-            StemPackageModel package =
-                JsonUtility.FromJson<StemPackageModel>(
-                    manifestJson
-                );
-
-            // ====================================
-            // 4. VALIDAR MANIFEST
-            // ====================================
+            StemPackageModel package = JsonUtility.FromJson<StemPackageModel>(
+                File.ReadAllText(manifestPath));
 
             ValidateManifest(package);
+            ValidatePackageFiles(stagingPath, package);
 
-            Debug.Log(
-                "Manifest válido: " +
-                package.nombre
-            );
+            PackageValidatorService validator = new PackageValidatorService();
+            validator.ValidatePackage(stagingPath, package);
 
-            // ====================================
-            // 5. VALIDAR ARCHIVOS
-            // ====================================
+            Debug.Log("Paquete nuevo validado: " + package.nombre);
+            destinationPath = Path.Combine(packagesPath, package.id);
 
-            ValidatePackageFiles(
-                tempPath,
-                package
-            );
-
-            // ====================================
-            // 6. VALIDACIÓN PROFUNDA
-            // ====================================
-
-            PackageValidatorService validator =
-                new PackageValidatorService();
-
-            validator.ValidatePackage(
-                tempPath,
-                package
-            );
-
-            Debug.Log(
-                "Validación del contenido completada."
-            );
-
-            // ====================================
-            // 7. VALIDAR TEST VOCACIONAL ÚNICO
-            // ====================================
-
-            ValidateSingleVocationalTest(
-                package
-            );
-
-            // ====================================
-            // 8. PREPARAR DESTINO
-            // ====================================
-
-            destinationPath = Path.Combine(
-                packagesPath,
-                package.id
-            );
-
-            // ====================================
-            // 9. RESPALDAR VERSIÓN ANTERIOR
-            // ====================================
-
-            if (Directory.Exists(destinationPath))
+            // 2. Poner a salvo TODOS los paquetes anteriores.
+            // El ZIP nuevo todavía está íntegro en STEM/Temp.
+            if (Directory.Exists(packagesPath))
             {
-                Debug.Log(
-                    "Actualizando paquete existente: " +
-                    package.id
-                );
-
-                backupPath = Path.Combine(
-                    tempRootPath,
-                    "backup_" +
-                    Guid.NewGuid().ToString("N")
-                );
-
-                Directory.Move(
-                    destinationPath,
-                    backupPath
-                );
-
-                previousPackageMoved = true;
+                Directory.Move(packagesPath, backupPath);
+                previousPackagesBackedUp = true;
             }
 
-            // ====================================
-            // 10. INSTALAR PAQUETE VALIDADO
-            // ====================================
+            // 3. Crear la carpeta vacía de paquetes e instalar SOLO el nuevo.
+            Directory.CreateDirectory(packagesPath);
+            Directory.Move(stagingPath, destinationPath);
+            installationCommitted = true;
 
-            Directory.Move(
-                tempPath,
-                destinationPath
-            );
-
-            newPackageInstalled = true;
-
-            // ====================================
-            // 11. LIMPIAR RESPALDO ANTERIOR
-            // ====================================
-
-            if (previousPackageMoved &&
-                Directory.Exists(backupPath))
+            // 4. Solo tras instalar correctamente se retiran los anteriores.
+            if (previousPackagesBackedUp && Directory.Exists(backupPath))
             {
                 try
                 {
-                    Directory.Delete(
-                        backupPath,
-                        true
-                    );
+                    Directory.Delete(backupPath, true);
+                    Debug.Log("Paquetes anteriores eliminados correctamente.");
                 }
                 catch (Exception cleanupException)
                 {
+                    // Se conserva el respaldo si el SO no permite eliminarlo.
                     Debug.LogWarning(
-                        "El paquete se instaló, pero no fue " +
-                        "posible eliminar el respaldo temporal: " +
-                        cleanupException.Message
-                    );
+                        "Nuevo paquete instalado, pero no se pudo eliminar " +
+                        "el respaldo temporal de paquetes anteriores: " +
+                        backupPath + " | " + cleanupException.Message);
                 }
             }
 
-            // ====================================
-            // 12. INSTALACIÓN CORRECTA
-            // ====================================
-
             Debug.Log(
-                "Paquete instalado: " +
-                package.nombre
-            );
-
-            Debug.Log(
-                "ID: " + package.id
-            );
-
-            Debug.Log(
-                "Ruta: " + destinationPath
-            );
-
-            if (!string.IsNullOrWhiteSpace(
-                package.testVocacional))
-            {
-                Debug.Log(
-                    "Este paquete incluye el test vocacional STEM."
-                );
-            }
+                "Instalación por reemplazo completada. " +
+                "Solo está activo el paquete: " + package.nombre +
+                " | ID: " + package.id + " | Ruta: " + destinationPath);
 
             return destinationPath;
         }
-        catch
+        catch (Exception installException)
         {
-            // ====================================
-            // RECUPERAR PAQUETE ANTERIOR
-            // ====================================
-
-            if (previousPackageMoved &&
-                !newPackageInstalled &&
-                backupPath != null &&
-                destinationPath != null &&
-                Directory.Exists(backupPath) &&
-                !Directory.Exists(destinationPath))
+            // Si la operación falló ANTES del respaldo, los paquetes
+            // existentes nunca se tocaron. Si falló DESPUÉS, se restauran.
+            if (previousPackagesBackedUp && !installationCommitted)
             {
                 try
                 {
-                    Directory.Move(
-                        backupPath,
-                        destinationPath
-                    );
+                    // El contenido nuevo es descartable: el respaldo no.
+                    if (Directory.Exists(packagesPath))
+                        Directory.Delete(packagesPath, true);
 
+                    Directory.Move(backupPath, packagesPath);
                     Debug.LogWarning(
-                        "Se restauró el paquete anterior."
-                    );
+                        "La instalación falló. Se restauraron TODOS los paquetes anteriores.");
                 }
                 catch (Exception restoreException)
                 {
                     Debug.LogError(
-                        "No se pudo restaurar el paquete anterior. " +
-                        "El respaldo permanece en: " +
-                        backupPath + "\n" +
-                        restoreException.Message
-                    );
+                        "ATENCIÓN: no se pudo restaurar automáticamente " +
+                        "la carpeta de paquetes anteriores. El respaldo " +
+                        "permanece en: " + backupPath + "\n" +
+                        restoreException);
                 }
             }
 
-            // ====================================
-            // LIMPIAR EXTRACCIÓN TEMPORAL
-            // ====================================
-
-            if (Directory.Exists(tempPath))
+            Debug.LogError(
+                "No se instaló el ZIP nuevo: " + installException.Message);
+            throw;
+        }
+        finally
+        {
+            // La extracción temporal se borra, sin tocar el respaldo.
+            if (Directory.Exists(stagingPath))
             {
                 try
                 {
-                    Directory.Delete(
-                        tempPath,
-                        true
-                    );
+                    Directory.Delete(stagingPath, true);
                 }
                 catch (Exception cleanupException)
                 {
                     Debug.LogWarning(
-                        "No se pudo limpiar la carpeta temporal: " +
-                        cleanupException.Message
-                    );
+                        "No se pudo limpiar la extracción temporal: " +
+                        cleanupException.Message);
                 }
             }
-
-            throw;
         }
     }
 
@@ -555,74 +413,6 @@ public class PackageService
         }
 
         return fullPath;
-    }
-
-    // ============================================
-    // VALIDAR QUE SOLO EXISTA UN TEST VOCACIONAL
-    // ============================================
-
-    private void ValidateSingleVocationalTest(
-        StemPackageModel incomingPackage)
-    {
-        // Si no trae test vocacional,
-        // no necesita comprobar exclusividad.
-        if (string.IsNullOrWhiteSpace(
-            incomingPackage.testVocacional))
-        {
-            return;
-        }
-
-        string[] installedDirectories =
-            Directory.GetDirectories(packagesPath);
-
-        foreach (string directory in installedDirectories)
-        {
-            string installedPackageId =
-                Path.GetFileName(directory);
-
-            // Permitir actualizar el mismo paquete.
-            if (string.Equals(
-                installedPackageId,
-                incomingPackage.id,
-                StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            string manifestPath = Path.Combine(
-                directory,
-                "manifest.json"
-            );
-
-            if (!File.Exists(manifestPath))
-            {
-                continue;
-            }
-
-            string json =
-                File.ReadAllText(manifestPath);
-
-            StemPackageModel installedPackage =
-                JsonUtility.FromJson<StemPackageModel>(
-                    json
-                );
-
-            if (installedPackage == null)
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(
-                installedPackage.testVocacional))
-            {
-                throw new Exception(
-                    "Ya existe un test vocacional instalado " +
-                    $"en el paquete '{installedPackage.nombre}'. " +
-                    "Solo puede existir uno activo. " +
-                    "Actualiza ese paquete o desinstálalo primero."
-                );
-            }
-        }
     }
 
     // ============================================

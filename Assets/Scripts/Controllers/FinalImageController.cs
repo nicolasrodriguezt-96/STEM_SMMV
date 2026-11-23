@@ -5,29 +5,19 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Controlador de UNA imagen final para STEM SMMV (Windows).
-/// Debe estar en un GameObject activo llamado FinalImageManager,
-/// FUERA de FinalImagePanel.
-///
-/// - Oculta FinalImagePanel al iniciar Unity.
-/// - Permite elegir una imagen PNG/JPG con Simple File Browser.
-/// - Guarda una unica imagen en Application.persistentDataPath.
-/// - Muestra la imagen al pulsar los botones de salida de resultados
-///   mediante FinalImageController.ShowIfAvailable().
-/// - Continuar solo oculta la imagen; el menu de destino ya se ha abierto
-///   por el controlador que llamo a ShowIfAvailable().
+/// Gestiona una sola imagen de cierre compartida por todas las actividades STEM.
+/// En esta etapa, se configura y prueba en Windows.
+/// No depende de Firebase ni de los paquetes ZIP.
 /// </summary>
 public class FinalImageController : MonoBehaviour
 {
-    [Header("Panel de imagen final (NO el Canvas principal)")]
+    [Header("Pantalla de cierre")]
     [SerializeField] private GameObject finalImagePanel;
-
-    [Header("Componentes del panel")]
     [SerializeField] private RawImage finalImageView;
     [SerializeField] private AspectRatioFitter imageAspectFitter;
     [SerializeField] private Button continueButton;
 
-    [Header("Limites")]
+    [Header("Limites de la imagen")]
     [SerializeField, Min(1)] private int maxFileSizeMB = 15;
     [SerializeField, Min(256)] private int maxImageDimension = 4096;
 
@@ -41,7 +31,7 @@ public class FinalImageController : MonoBehaviour
     {
         if (instance != null && instance != this)
         {
-            Debug.LogWarning("Ya existe un FinalImageController. Destruyendo duplicado.", this);
+            Debug.LogWarning("Ya existe un FinalImageController en la escena. Se elimina el duplicado.");
             Destroy(gameObject);
             return;
         }
@@ -50,89 +40,30 @@ public class FinalImageController : MonoBehaviour
         savedImagePath = Path.Combine(
             Application.persistentDataPath, "STEM", "Data", "final_image.png");
 
-        // Proteccion: JAMAS desactivar un contenedor de la app por error.
-        // Se exige el panel concreto y que sus componentes vivan dentro de el.
-        if (!IsSafeFinalPanel())
-        {
-            Debug.LogError(
-                "FinalImageController: referencias incorrectas. No se ocultara ningun " +
-                "objeto para evitar desactivar historias, tests o minijuegos.", this);
-            return;
-        }
+        // Es importante que el panel sea independiente de MainPanel y ResultPanel.
+        if (finalImagePanel != null)
+            finalImagePanel.SetActive(false);
 
-        HideFinalImage(); // Solo FinalImagePanel, desde Awake.
+        if (continueButton != null)
+            continueButton.onClick.AddListener(CloseFinalImage);
 
-        continueButton.onClick.AddListener(CloseFinalImage);
         LoadSavedImage();
     }
 
     /// <summary>
-    /// Rechaza accidentalmente asignar Canvas, MainPanel o un contenedor
-    /// general. FinalImagePanel debe ser un objeto UI independiente dentro
-    /// del Canvas principal, con su RawImage y boton como descendientes.
-    /// </summary>
-    private bool IsSafeFinalPanel()
-    {
-        if (finalImagePanel == null)
-        {
-            Debug.LogError("Asigna FinalImagePanel en el Inspector de FinalImageManager.", this);
-            return false;
-        }
-
-        if (finalImagePanel.name != "FinalImagePanel")
-        {
-            Debug.LogError(
-                "No se ocultara '" + finalImagePanel.name +
-                "'. En Final Image Panel asigna el objeto llamado FinalImagePanel.", this);
-            return false;
-        }
-
-        if (finalImagePanel.GetComponent<Canvas>() != null)
-        {
-            Debug.LogError(
-                "Final Image Panel apunta a un objeto Canvas. " +
-                "Asigna el Panel interno, nunca el Canvas.", this);
-            return false;
-        }
-
-        if (transform == finalImagePanel.transform ||
-            transform.IsChildOf(finalImagePanel.transform))
-        {
-            Debug.LogError("FinalImageManager debe estar FUERA de FinalImagePanel.", this);
-            return false;
-        }
-
-        if (finalImageView == null ||
-            !finalImageView.transform.IsChildOf(finalImagePanel.transform))
-        {
-            Debug.LogError(
-                "Final Image View debe ser un RawImage dentro de FinalImagePanel.", this);
-            return false;
-        }
-
-        if (continueButton == null ||
-            !continueButton.transform.IsChildOf(finalImagePanel.transform))
-        {
-            Debug.LogError(
-                "Continue Button debe ser un Button dentro de FinalImagePanel.", this);
-            return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// OnClick de "Cargar imagen final" en MainPanel.
+    /// Asignar desde el OnClick del boton "Cargar imagen final".
+    /// Mantiene visibles imagenes y ZIP para no bloquear el instalador.
     /// </summary>
     public void SelectFinalImage()
     {
         if (FileBrowser.IsOpen)
         {
-            Debug.LogWarning("Ya hay un selector de archivos abierto.", this);
+            Debug.LogWarning("Ya hay un explorador de archivos abierto.");
             return;
         }
 
-        // Se conserva el filtro ZIP para no afectar al selector del instalador.
+        // Los filtros del plugin son globales. Incluimos tambien ZIP para
+        // que el instalador de paquetes siga pudiendo seleccionar sus archivos.
         FileBrowser.SetFilters(
             true,
             new FileBrowser.Filter("Imagenes", ".png", ".jpg", ".jpeg"),
@@ -152,7 +83,7 @@ public class FinalImageController : MonoBehaviour
         );
 
         if (!shown)
-            Debug.LogWarning("No se pudo abrir el selector de imagen.", this);
+            Debug.LogWarning("No fue posible abrir el explorador de imagenes.");
     }
 
     private void OnFileSelected(string[] paths)
@@ -162,52 +93,51 @@ public class FinalImageController : MonoBehaviour
 
         string sourcePath = paths[0];
         string extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-
         if (extension != ".png" && extension != ".jpg" && extension != ".jpeg")
         {
-            Debug.LogError("Selecciona una imagen PNG, JPG o JPEG.", this);
+            Debug.LogError("Selecciona un archivo PNG, JPG o JPEG.");
             return;
         }
 
         Texture2D newTexture = null;
         try
         {
-            long maxBytes = (long)maxFileSizeMB * 1024L * 1024L;
+            long maxBytes = (long)maxFileSizeMB * 1024 * 1024;
             if (FileBrowserHelpers.GetFilesize(sourcePath) > maxBytes)
-                throw new InvalidOperationException(
-                    "La imagen supera el limite de " + maxFileSizeMB + " MB.");
+                throw new InvalidOperationException("La imagen supera el limite de " + maxFileSizeMB + " MB.");
 
             byte[] bytes = FileBrowserHelpers.ReadBytesFromFile(sourcePath);
             if (bytes == null || bytes.Length == 0 || bytes.LongLength > maxBytes)
-                throw new InvalidOperationException("La imagen esta vacia o es demasiado grande.");
+                throw new InvalidOperationException("El archivo esta vacio o es demasiado grande.");
 
             newTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!ImageConversion.LoadImage(newTexture, bytes, false))
-                throw new InvalidOperationException("El archivo no es una imagen PNG/JPG valida.");
+                throw new InvalidOperationException("El archivo no contiene una imagen PNG/JPG valida.");
 
             if (newTexture.width > maxImageDimension || newTexture.height > maxImageDimension)
                 throw new InvalidOperationException(
-                    "La imagen supera " + maxImageDimension + " pixeles en alguno de sus lados.");
+                    "La imagen supera la dimension maxima de " + maxImageDimension + " pixeles por lado.");
 
+            // Se normaliza todo a UN archivo PNG persistente. Una nueva imagen
+            // reemplaza el archivo anterior sin acumular imagenes.
             byte[] pngBytes = newTexture.EncodeToPNG();
             if (pngBytes == null || pngBytes.Length == 0)
-                throw new InvalidOperationException("No se pudo convertir a PNG.");
+                throw new InvalidOperationException("No se pudo convertir la imagen a PNG.");
 
             Directory.CreateDirectory(Path.GetDirectoryName(savedImagePath));
             File.WriteAllBytes(savedImagePath, pngBytes);
 
             SetSavedTexture(newTexture);
-            newTexture = null;
+            newTexture = null; // La textura ahora pertenece al controlador.
 
-            Debug.Log("IMAGEN FINAL GUARDADA CORRECTAMENTE: " + savedImagePath);
-
-            // Mostrar vista previa solo tras la seleccion, nunca al inicio.
-            if (!ShowIfAvailable())
-                Debug.LogWarning("Imagen guardada, pero no se pudo mostrar. Revisa las referencias.");
+            Debug.Log("IMAGEN FINAL GUARDADA CORRECTAMENTE");
+            Debug.Log("Ruta: " + savedImagePath);
+            ShowIfAvailable(); // Vista previa inmediata de la imagen elegida.
+            Debug.Log("Se mostrara al finalizar quiz, test vocacional o historia, una vez conectados sus controladores.");
         }
         catch (Exception ex)
         {
-            Debug.LogError("No se pudo guardar la imagen final: " + ex.Message, this);
+            Debug.LogError("No se pudo guardar la imagen final: " + ex.Message);
         }
         finally
         {
@@ -230,17 +160,15 @@ public class FinalImageController : MonoBehaviour
             byte[] bytes = File.ReadAllBytes(savedImagePath);
             loadedTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!ImageConversion.LoadImage(loadedTexture, bytes, false))
-                throw new InvalidOperationException("La imagen guardada no es valida.");
+                throw new InvalidOperationException("El PNG guardado es invalido.");
 
             SetSavedTexture(loadedTexture);
             loadedTexture = null;
             Debug.Log("Imagen final recuperada desde disco: " + savedImagePath);
-
-            // Deliberadamente NO se llama ShowIfAvailable() aqui.
         }
         catch (Exception ex)
         {
-            Debug.LogError("No se pudo recuperar la imagen final: " + ex.Message, this);
+            Debug.LogError("No se pudo recuperar la imagen final: " + ex.Message);
         }
         finally
         {
@@ -263,48 +191,35 @@ public class FinalImageController : MonoBehaviour
         savedTexture = texture;
     }
 
-    private void HideFinalImage()
-    {
-        if (IsSafeFinalPanel())
-            finalImagePanel.SetActive(false);
-    }
-
     /// <summary>
-    /// Lo llaman QuizResultController y FinalImageNavigationController.
-    /// Primero debe prepararse el menu de destino; despues se activa el panel.
+    /// Para la fase de integracion: llamar al finalizar cada actividad.
+    /// Devuelve false si no existe una imagen configurada.
     /// </summary>
     public static bool ShowIfAvailable()
     {
-        if (instance == null || !instance.IsSafeFinalPanel() || instance.savedTexture == null)
-        {
-            Debug.LogWarning(
-                "IMAGEN FINAL NO DISPONIBLE. Verifica FinalImageManager activo, " +
-                "FinalImagePanel asignado e imagen guardada.");
+        if (instance == null || instance.savedTexture == null || instance.finalImagePanel == null)
             return false;
-        }
 
         instance.finalImagePanel.SetActive(true);
         instance.finalImagePanel.transform.SetAsLastSibling();
-        Debug.Log("IMAGEN FINAL MOSTRADA");
         return true;
     }
 
     /// <summary>
-    /// OnClick del boton Continuar (se registra automaticamente en Awake).
+    /// Asignar al ContinueButton si no esta conectado mediante el Inspector.
+    /// El listener se registra automaticamente en Awake cuando hay referencia.
     /// </summary>
     public void CloseFinalImage()
     {
-        HideFinalImage();
-        Debug.Log("Imagen final cerrada.");
+        if (finalImagePanel != null)
+            finalImagePanel.SetActive(false);
     }
 
-    /// <summary>
-    /// Vista previa opcional desde un boton de prueba.
-    /// </summary>
+    // Permite probar la pantalla sin terminar un cuestionario.
     public void PreviewFinalImage()
     {
         if (!ShowIfAvailable())
-            Debug.LogWarning("Carga primero una imagen final.");
+            Debug.LogWarning("Primero selecciona una imagen final.");
     }
 
     private void OnDestroy()
