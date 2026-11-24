@@ -3625,7 +3625,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 289.99982, y: 0.000018786262}
+  m_AnchoredPosition: {x: 289.99985, y: 0.000018786262}
   m_SizeDelta: {x: -583.2874, y: 0}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &638349593
@@ -5464,13 +5464,13 @@ MonoBehaviour:
     panel: {fileID: 98717583}
     usarTarjetasDinamicas: 1
     contenedorTarjetas: {fileID: 1945892149}
-    botonA: {fileID: 0}
-    botonB: {fileID: 0}
+    botonA: {fileID: 230884810}
+    botonB: {fileID: 1104242283}
     botonC: {fileID: 0}
-    botonD: {fileID: 0}
+    botonD: {fileID: 366546019}
   - nombrePantalla: Quiz
     panel: {fileID: 1077398008}
-    usarTarjetasDinamicas: 1
+    usarTarjetasDinamicas: 0
     contenedorTarjetas: {fileID: 0}
     botonA: {fileID: 945089733}
     botonB: {fileID: 639832356}
@@ -5478,7 +5478,7 @@ MonoBehaviour:
     botonD: {fileID: 45133877}
   - nombrePantalla: vocacional test
     panel: {fileID: 323447257}
-    usarTarjetasDinamicas: 1
+    usarTarjetasDinamicas: 0
     contenedorTarjetas: {fileID: 0}
     botonA: {fileID: 974992174}
     botonB: {fileID: 1776543182}
@@ -5486,7 +5486,7 @@ MonoBehaviour:
     botonD: {fileID: 1114872499}
   - nombrePantalla: Resultados quiz
     panel: {fileID: 1309903562}
-    usarTarjetasDinamicas: 1
+    usarTarjetasDinamicas: 0
     contenedorTarjetas: {fileID: 0}
     botonA: {fileID: 1534834406}
     botonB: {fileID: 0}
@@ -5494,9 +5494,9 @@ MonoBehaviour:
     botonD: {fileID: 0}
   - nombrePantalla: Resultados test
     panel: {fileID: 1309903562}
-    usarTarjetasDinamicas: 1
+    usarTarjetasDinamicas: 0
     contenedorTarjetas: {fileID: 0}
-    botonA: {fileID: 431463471}
+    botonA: {fileID: 1534834406}
     botonB: {fileID: 0}
     botonC: {fileID: 0}
     botonD: {fileID: 0}
@@ -5508,9 +5508,9 @@ MonoBehaviour:
     botonB: {fileID: 0}
     botonC: {fileID: 0}
     botonD: {fileID: 0}
-  puertoPreferido: 
+  puertoPreferido: COM5
   segundosEntreBusquedas: 1.5
-  registrarPulsaciones: 0
+  registrarPulsaciones: 1
 --- !u!1 &924534668
 GameObject:
   m_ObjectHideFlags: 0
@@ -10110,8 +10110,8 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 706791694}
   m_HandleRect: {fileID: 706791693}
   m_Direction: 0
-  m_Value: 1.0000603
-  m_Size: 0.92464054
+  m_Value: 1.0000371
+  m_Size: 0.9887785
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
